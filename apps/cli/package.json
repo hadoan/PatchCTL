@@ -10,13 +10,14 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "pnpm run build && node --test cli.check.mjs local.check.mjs drafts.check.mjs repository-localization.check.mjs localization-entries.check.mjs",
+    "test": "pnpm run build && node --test cli.check.mjs local.check.mjs drafts.check.mjs repository-localization.check.mjs localization-entries.check.mjs localization-validation.check.mjs",
     "build": "pnpm --filter @patchctl/postgres build && tsc -p tsconfig.json",
     "typecheck": "pnpm --filter @patchctl/postgres build && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@corely/api-client": "workspace:*",
     "@corely/contracts": "workspace:*",
+    "@formatjs/icu-messageformat-parser": "^3.5.20",
     "@napi-rs/keyring": "^2.0.0",
     "@patchctl/postgres": "workspace:*",
     "pg": "catalog:",

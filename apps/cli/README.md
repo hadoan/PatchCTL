@@ -84,6 +84,14 @@ with a recorded matching source revision is `translated`; a changed source is `s
 target text with no recorded source revision is `unverified`, since PatchCTL cannot infer when
 it was translated. The later proposal/apply workflow must persist these provenance baselines.
 
+Structural proposal validation uses ICU MessageFormat parsing. It preserves named arguments and
+their types, requires valid plural/select syntax with an `other` branch, and checks balanced
+markup. The initial allowed rich-text tags are `b`, `strong`, `i`, `em`, `u`, `code`, and `link`;
+tags with attributes and unknown tags are unsupported. ICU apostrophe quoting can escape syntax
+characters. Validation reports machine-readable codes and source locations where available; it
+does not assess language quality. See [FormatJS ICU syntax](https://formatjs.github.io/docs/core-concepts/icu-syntax/)
+for the supported message grammar.
+
 ## Hosted compatibility commands
 
 The portable `@corely/api-client/patchctl` remains credential-free and Postgres-free. The older
