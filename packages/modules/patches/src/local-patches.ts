@@ -321,7 +321,35 @@ export async function reportLocalExecution(
 ) {
   const result = LocalResultSchema.parse(input);
   const patch = await getLocalPatch(actor, repo, id);
-  authorize(actor, "propose", patch.tenantId, patch.proposal.connectionId);
+  authorize(
+    actor,
+    "kind" in patch.proposal ? "apply" : "propose",
+    patch.tenantId,
+    patch.proposal.connectionId,
+  );
+  const localization = "kind" in patch.proposal;
+  const githubRepository =
+    "kind" in patch.proposal
+      ? /^(?:https:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)([^/]+)\/([^/]+?)(?:\.git)?$/.exec(
+          patch.proposal.repositoryUrl,
+        )
+      : null;
+  if (
+    (localization &&
+      result.status === "APPLIED" &&
+      (!result.receipt ||
+        result.receipt.branch !== `patchctl/l10n/${patch.id}` ||
+        (githubRepository &&
+          !result.receipt.prUrl.startsWith(
+            `https://github.com/${githubRepository[1]}/${githubRepository[2]}/pull/`,
+          )))) ||
+    (result.receipt && (!localization || result.status !== "APPLIED"))
+  )
+    throw new PatchError(
+      400,
+      "INVALID_RECEIPT",
+      "A completed localization apply requires its matching Git and PR receipt.",
+    );
   if (
     patch.revision !== result.revision ||
     !patch.reviewerId ||
@@ -335,8 +363,15 @@ export async function reportLocalExecution(
   if (
     patch.status === result.status &&
     patch.failureCode === (result.code ?? null)
-  )
+  ) {
+    if (JSON.stringify(patch.receipt) !== JSON.stringify(result.receipt))
+      throw new PatchError(
+        409,
+        "RECEIPT_MISMATCH",
+        "Execution receipt differs from the recorded result.",
+      );
     return patch;
+  }
   if (patch.status !== "APPROVED")
     throw new PatchError(
       409,
@@ -362,6 +397,7 @@ export async function reportLocalExecution(
     status: result.status === "STARTED" ? "APPROVED" : result.status,
     appliedAt: result.status === "APPLIED" ? new Date().toISOString() : null,
     failureCode: result.code ?? null,
+    ...(result.receipt ? { receipt: result.receipt } : {}),
     events: [
       ...patch.events,
       event(

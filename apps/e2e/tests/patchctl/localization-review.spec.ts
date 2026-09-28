@@ -27,7 +27,11 @@ const operation = (input: {
 
 async function mockReview(
   page: Page,
-  options: { agent?: boolean; invalid?: boolean } = {},
+  options: {
+    agent?: boolean;
+    invalid?: boolean;
+    status?: "SUBMITTED" | "APPROVED" | "APPLIED";
+  } = {},
 ) {
   const operations = [
     operation({
@@ -66,7 +70,7 @@ async function mockReview(
     id,
     tenantId: "tenant",
     revision,
-    status: "SUBMITTED",
+    status: options.status ?? "SUBMITTED",
     proposal: {
       kind: "repository-localization",
       id,
@@ -80,10 +84,19 @@ async function mockReview(
       operations,
     },
     creator: { id: "agent", kind: "agent" },
-    reviewerId: null,
-    reviewedAt: null,
-    appliedAt: null,
+    reviewerId: options.status ? "reviewer" : null,
+    reviewedAt: options.status ? "2026-09-05T11:00:00Z" : null,
+    appliedAt: options.status === "APPLIED" ? "2026-09-05T12:00:00Z" : null,
     failureCode: null,
+    ...(options.status === "APPLIED"
+      ? {
+          receipt: {
+            branch: `patchctl/l10n/${id}`,
+            commitSha: "c".repeat(40),
+            prUrl: "https://github.com/example/app/pull/1",
+          },
+        }
+      : {}),
     events: [
       {
         event: "PATCH_SUBMITTED",
@@ -117,7 +130,7 @@ async function mockReview(
       },
     }),
   );
-  let status = "SUBMITTED";
+  let status = options.status ?? "SUBMITTED";
   await page.route(`**/api/patchctl/local-patches/${id}`, (route) =>
     route.fulfill({ json: { ...patch, status } }),
   );
@@ -210,4 +223,20 @@ test("validation errors remain visible and block approval", async ({
   await expect(page.getByRole("button", { name: "Approve" })).toBeDisabled();
   await page.getByLabel("Validation errors only").check();
   await expect(page.getByTestId("localization-diff")).toHaveCount(1);
+});
+
+test("shows the applied Git commit and pull request receipt", async ({
+  page,
+}) => {
+  await mockReview(page, { status: "APPLIED" });
+  await expect(page.getByTestId("patch-state")).toHaveText("APPLIED");
+  await expect(page.getByText(`Commit ${"c".repeat(40)}`)).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Pull request" }),
+  ).toHaveAttribute("href", "https://github.com/example/app/pull/1");
+  await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
+  await page.screenshot({
+    path: "./.patchctl-results/localization/applied-receipt.png",
+    fullPage: true,
+  });
 });

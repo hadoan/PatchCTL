@@ -276,6 +276,18 @@ export const LocalPatchSchema = z
     reviewedAt: z.string().nullable(),
     appliedAt: z.string().nullable(),
     failureCode: z.string().nullable(),
+    receipt: z
+      .object({
+        branch: z.string().min(1).max(200),
+        commitSha: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),
+        prUrl: z
+          .string()
+          .url()
+          .max(1000)
+          .regex(/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/),
+      })
+      .strict()
+      .optional(),
     events: z.array(
       z.object({ event: z.string(), actor, timestamp: z.string() }).strict(),
     ),
@@ -298,8 +310,11 @@ export const LocalResultSchema = z
         "RELATION_NOT_FOUND",
         "DATABASE_UNAVAILABLE",
         "APPLY_FAILED",
+        "REPOSITORY_UNAVAILABLE",
+        "PULL_REQUEST_UNAVAILABLE",
       ])
       .optional(),
+    receipt: LocalPatchSchema.shape.receipt,
   })
   .strict();
 export type LocalProposal = z.infer<typeof LocalProposalSchema>;

@@ -39,6 +39,7 @@ Local-first commands (PostgreSQL credentials stay on this machine):
   localization start --title TITLE
   localization set KEY --locale de --value TEXT
   localization diff | validate | submit
+  localization apply  # human token in PATCHCTL_APPLY_TOKEN after approval
   localization login --server ORIGIN
 
 Hosted compatibility commands (explicit server namespace; server owns its DSN):

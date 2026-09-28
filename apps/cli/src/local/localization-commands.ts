@@ -3,7 +3,10 @@ import {
   createPatchctlClient,
   PatchctlClientError,
 } from "@corely/api-client/patchctl";
-import { RepositoryLocalizationProposalSchema } from "@corely/contracts";
+import {
+  RepositoryLocalizationProposalSchema,
+  canonicalLocal,
+} from "@corely/contracts";
 import { validateLocalizationProposal } from "@patchctl/localization";
 import {
   configDirectory,
@@ -14,6 +17,7 @@ import {
 import { NativeCredentialStore, type CredentialStore } from "./credentials.js";
 import { hiddenSecret } from "./commands.js";
 import { LocalError } from "./errors.js";
+import { applyApprovedLocalizationPatch } from "./localization-apply.js";
 import {
   modelLocalizationEntries,
   type LocalizationEntry,
@@ -74,6 +78,7 @@ function parse(args: string[]) {
       "validate",
       "login",
       "submit",
+      "apply",
     ].includes(command) ||
     positionals.length !== (["get", "set"].includes(command) ? 2 : 1)
   )
@@ -92,6 +97,7 @@ function parse(args: string[]) {
     validate: [],
     login: ["--server"],
     submit: [],
+    apply: [],
   };
   for (const option of Object.keys(options))
     if (!["--tenant", "--source", ...allowed[command]].includes(option))
@@ -387,6 +393,115 @@ export async function runLocalizationCommand(
           );
         if (command === "diff")
           return { patchId: draft.id, operations: draft.operations };
+        if (command === "apply") {
+          if (!source.server)
+            throw new LocalError(
+              "SERVER_NOT_CONFIGURED",
+              "Run patchctl localization login first.",
+            );
+          const token = env.PATCHCTL_APPLY_TOKEN;
+          if (!token)
+            throw new LocalError(
+              "CREDENTIAL_NOT_FOUND",
+              "A human apply token is required in PATCHCTL_APPLY_TOKEN.",
+            );
+          const client = createPatchctlClient({
+            baseUrl: source.server.url,
+            getAccessToken: () => token,
+            ...(fetchImpl ? { fetch: fetchImpl } : {}),
+          });
+          const actor = await client.actor();
+          if (
+            actor.kind !== "human" ||
+            !actor.permissions.includes("apply") ||
+            actor.tenantId !== source.server.tenantId ||
+            (actor.connectionIds !== null &&
+              !actor.connectionIds.includes(source.server.connectionId))
+          )
+            throw new LocalError(
+              "FORBIDDEN",
+              "Human apply permission for this Tenant and source is required.",
+            );
+          const patch = await client.localPatch(draft.id);
+          const expected = RepositoryLocalizationProposalSchema.parse({
+            kind: "repository-localization",
+            id: draft.id,
+            connectionId: source.server.connectionId,
+            repositoryUrl: draft.repositoryUrl,
+            baseBranch: draft.baseBranch,
+            baseLocale: draft.baseLocale,
+            baseCommitSha: draft.baseCommitSha,
+            title: draft.title,
+            createdAt: draft.createdAt,
+            operations: draft.operations,
+          });
+          if (
+            patch.tenantId !== actor.tenantId ||
+            !("kind" in patch.proposal) ||
+            canonicalLocal(patch.proposal) !== canonicalLocal(expected)
+          )
+            throw new LocalError(
+              "PATCH_CONFLICT",
+              "Hosted approved Patch differs from the local immutable draft.",
+            );
+          if (patch.status === "APPLIED" && patch.receipt) {
+            draft.status = "APPLIED";
+            await save(draft);
+            return {
+              patchId: patch.id,
+              status: patch.status,
+              revision: patch.revision,
+              ...patch.receipt,
+            };
+          }
+          if (
+            patch.status !== "APPROVED" ||
+            !patch.reviewerId ||
+            !patch.reviewedAt
+          )
+            throw new LocalError(
+              "PATCH_NOT_APPROVED",
+              "A human decision on this exact Patch revision is required.",
+            );
+          await client.localResult(patch.id, {
+            revision: patch.revision,
+            status: "STARTED",
+          });
+          try {
+            const receipt = await applyApprovedLocalizationPatch(
+              source,
+              patch.proposal,
+              patch.revision,
+            );
+            const applied = await client.localResult(patch.id, {
+              revision: patch.revision,
+              status: "APPLIED",
+              receipt,
+            });
+            draft.status = "APPLIED";
+            await save(draft);
+            return {
+              patchId: applied.id,
+              status: applied.status,
+              revision: applied.revision,
+              ...receipt,
+            };
+          } catch (caught) {
+            if (
+              caught instanceof LocalError &&
+              caught.code === "PATCH_CONFLICT"
+            ) {
+              await client.localResult(patch.id, {
+                revision: patch.revision,
+                status: "CONFLICT",
+                code: "PATCH_CONFLICT",
+              });
+              draft.status = "CONFLICT";
+              await save(draft);
+            }
+            throw caught;
+          }
+        }
         const current =
           command === "submit" && draft.status !== "DRAFT"
             ? null

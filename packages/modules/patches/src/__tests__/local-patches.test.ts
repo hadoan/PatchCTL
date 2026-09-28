@@ -140,8 +140,7 @@ class MemoryRepository
   }
   async startExecution(before: LocalPatch, after: LocalPatch) {
     this.start(before, after);
-    if ("kind" in before.proposal)
-      throw new Error("Unexpected localization patch.");
+    if ("kind" in before.proposal) return this.replace(before, after);
     const source = this.sources.get(before.proposal.connectionId);
     if (
       source?.document.schema?.version !== before.proposal.schemaVersion ||
@@ -519,5 +518,71 @@ describe("repository localization proposals", () => {
     );
     expect(approved.status).toBe("APPROVED");
     expect(approved.reviewerId).toBe(human.id);
+    await expect(
+      reportLocalExecution(
+        { revision: submitted.revision, status: "STARTED" },
+        scopedAgent,
+        repository,
+        patchId,
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    await reportLocalExecution(
+      { revision: submitted.revision, status: "STARTED" },
+      human,
+      repository,
+      patchId,
+    );
+    const receipt = {
+      branch: `patchctl/l10n/${patchId}`,
+      commitSha: "c".repeat(40),
+      prUrl: "https://github.com/example/app/pull/1",
+    };
+    await expect(
+      reportLocalExecution(
+        { revision: submitted.revision, status: "APPLIED" },
+        human,
+        repository,
+        patchId,
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_RECEIPT" });
+    await expect(
+      reportLocalExecution(
+        {
+          revision: submitted.revision,
+          status: "APPLIED",
+          receipt: { ...receipt, prUrl: "https://github.com/other/app/pull/1" },
+        },
+        human,
+        repository,
+        patchId,
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_RECEIPT" });
+    const applied = await reportLocalExecution(
+      { revision: submitted.revision, status: "APPLIED", receipt },
+      human,
+      repository,
+      patchId,
+    );
+    expect(applied.receipt).toEqual(receipt);
+    expect(applied.events.at(-1)?.event).toBe("PATCH_APPLIED");
+    const replay = await reportLocalExecution(
+      { revision: submitted.revision, status: "APPLIED", receipt },
+      human,
+      repository,
+      patchId,
+    );
+    expect(replay.events).toHaveLength(applied.events.length);
+    await expect(
+      reportLocalExecution(
+        {
+          revision: submitted.revision,
+          status: "APPLIED",
+          receipt: { ...receipt, commitSha: "d".repeat(40) },
+        },
+        human,
+        repository,
+        patchId,
+      ),
+    ).rejects.toMatchObject({ code: "RECEIPT_MISMATCH" });
   });
 });

@@ -29,7 +29,8 @@ export const RepositoryLocalizationSourceSchema = z
         (value) =>
           /^https:\/\/[^\s]+$/.test(value) ||
           /^ssh:\/\/[^\s]+$/.test(value) ||
-          /^git@[^\s:]+:[^\s]+$/.test(value),
+          /^git@[^\s:]+:[^\s]+$/.test(value) ||
+          /^file:\/\/\/[^\s]+$/.test(value),
       ),
     checkoutPath: z.string().min(1).refine(isAbsolute),
     baseBranch: z
@@ -245,6 +246,7 @@ function parseEntries(
 /** Read only the configured JSON blobs from a pinned base-branch commit. */
 export async function discoverRepositoryLocalization(
   input: unknown,
+  pinnedCommitSha?: string,
 ): Promise<RepositoryLocalizationSnapshot> {
   const parsed = RepositoryLocalizationSourceSchema.safeParse(input);
   if (!parsed.success)
@@ -272,16 +274,37 @@ export async function discoverRepositoryLocalization(
       "REPOSITORY_MISMATCH",
       "Checkout origin does not match the configured repository identity.",
     );
+  if (
+    pinnedCommitSha &&
+    !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(pinnedCommitSha)
+  )
+    throw new LocalError(
+      "INVALID_INPUT",
+      "Pinned repository revision is invalid.",
+    );
   const remoteRef = `refs/remotes/origin/${source.baseBranch}^{commit}`;
   let commitSha: string;
-  try {
-    commitSha = await git(directory, ["rev-parse", "--verify", remoteRef]);
-  } catch {
+  if (pinnedCommitSha) {
     commitSha = await git(directory, [
       "rev-parse",
       "--verify",
-      `refs/heads/${source.baseBranch}^{commit}`,
+      `${pinnedCommitSha}^{commit}`,
     ]);
+    if (commitSha !== pinnedCommitSha)
+      throw new LocalError(
+        "REPOSITORY_UNAVAILABLE",
+        "Pinned commit is unavailable.",
+      );
+  } else {
+    try {
+      commitSha = await git(directory, ["rev-parse", "--verify", remoteRef]);
+    } catch {
+      commitSha = await git(directory, [
+        "rev-parse",
+        "--verify",
+        `refs/heads/${source.baseBranch}^{commit}`,
+      ]);
+    }
   }
   if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(commitSha))
     throw new LocalError(

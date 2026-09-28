@@ -77,12 +77,63 @@ export class PrismaLocalPatchRepository
     return result.count === 1;
   }
   async startExecution(before: LocalPatch, after: LocalPatch) {
-    if ("kind" in before.proposal)
-      throw new PatchError(
-        409,
-        "APPLY_NOT_IMPLEMENTED",
-        "Repository localization apply is not available yet.",
-      );
+    if ("kind" in before.proposal) {
+      const proposal = before.proposal;
+      return this.db.$transaction(async (tx) => {
+        const locked = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM "IntegrationConnection"
+          WHERE id=${proposal.connectionId}
+            AND "tenantId"=${before.tenantId}
+            AND "providerKey"=${repositoryLocalizationProviderKey}
+            AND status='active'
+          FOR UPDATE`;
+        if (locked.length !== 1)
+          throw new PatchError(
+            404,
+            "SOURCE_NOT_FOUND",
+            "Repository source not found.",
+          );
+        const source = await tx.integrationConnection.findFirst({
+          where: {
+            id: proposal.connectionId,
+            tenantId: before.tenantId,
+            providerKey: repositoryLocalizationProviderKey,
+            status: "active",
+          },
+          select: { configJson: true },
+        });
+        const config = source
+          ? RepositoryLocalizationSourceInputSchema.parse(source.configJson)
+          : null;
+        if (
+          !config ||
+          config.repositoryUrl !== proposal.repositoryUrl ||
+          config.baseBranch !== proposal.baseBranch ||
+          config.baseLocale !== proposal.baseLocale ||
+          proposal.operations.some(
+            (op) =>
+              !config.locales.includes(op.targetLocale) ||
+              config.paths[op.sourceLocale] !== op.sourcePath ||
+              config.paths[op.targetLocale] !== op.targetPath,
+          )
+        )
+          throw new PatchError(
+            409,
+            "STALE_SOURCE_CONFIGURATION",
+            "Repository localization source changed after approval.",
+          );
+        const result = await tx.localContentPatch.updateMany({
+          where: {
+            id: before.id,
+            tenantId: before.tenantId,
+            revision: before.revision,
+            document: JSON.stringify(before),
+          },
+          data: { status: after.status, document: JSON.stringify(after) },
+        });
+        return result.count === 1;
+      });
+    }
     const proposal = LocalProposalSchema.parse(before.proposal);
     return this.db.$transaction(async (tx) => {
       const locked = await tx.$queryRaw<Array<{ id: string }>>`

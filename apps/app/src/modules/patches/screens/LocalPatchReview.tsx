@@ -182,6 +182,28 @@ export function LocalPatchReview({ id }: { id?: string }) {
                   remains unchanged.
                 </p>
               )}
+            {detail.data.status === "APPROVED" &&
+              "kind" in detail.data.proposal && (
+                <p>
+                  Approved. A human with apply permission can run{" "}
+                  <code>patchctl localization apply</code> in the configured
+                  repository checkout. The command opens a pull request after
+                  rechecking the reviewed source and target revisions.
+                </p>
+              )}
+            {detail.data.receipt && (
+              <p className="break-all text-sm">
+                Commit {detail.data.receipt.commitSha} ·{" "}
+                <a
+                  href={detail.data.receipt.prUrl}
+                  className="underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Pull request
+                </a>
+              </p>
+            )}
             {detail.data.failureCode && (
               <p role="alert">
                 Local execution reported {detail.data.failureCode}. Prepare a

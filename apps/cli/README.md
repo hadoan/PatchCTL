@@ -82,7 +82,8 @@ The semantic model uses the source locale, key, and exact source text to make a 
 source revision for each translation. A missing or whitespace-only target is `missing`. A target
 with a recorded matching source revision is `translated`; a changed source is `stale`. Existing
 target text with no recorded source revision is `unverified`, since PatchCTL cannot infer when
-it was translated. The later proposal/apply workflow must persist these provenance baselines.
+it was translated. Locally configured provenance baselines are included in immutable proposals;
+the Git commit and PR receipt are stored with the Patch audit after application.
 
 Structural proposal validation uses ICU MessageFormat parsing. It preserves named arguments and
 their types, requires valid plural/select syntax with an `other` branch, and checks balanced
@@ -112,8 +113,18 @@ The local profile can be paired with a human-created, one-source token using
 `patchctl localization login --server ORIGIN`. The hosted source configuration must match the
 repository identity, base branch, locale paths, and base locale. A submitted revision cannot be
 edited or approved with agent credentials. Git files stay unchanged through submission and
-approval; approved Git apply is tracked in #35. The human comparison view is tracked in #34, so
-localization approval remains unavailable until that view exists.
+approval. The review page compares source, current target, and proposed target text before a
+human can decide the exact revision.
+
+After approval, a human with PatchCTL `apply` permission can run `patchctl localization apply`
+with their session token in `PATCHCTL_APPLY_TOKEN`. This command does not use the agent proposal
+token. It requires a local Git checkout with the configured `origin`, push access, and an
+authenticated GitHub CLI (`gh`). It checks the remote base commit and every source and target
+baseline before creating a deterministic `patchctl/l10n/<patch-id>` branch and a PR against the
+configured base branch. It never writes locale files in the current working tree or merges the
+PR. Retry the same command after a push, PR, or receipt-reporting interruption; it reconciles
+the existing branch and PR. If the base or reviewed content changed before the first PR, prepare
+a new Patch for human review.
 
 ## Hosted compatibility commands
 

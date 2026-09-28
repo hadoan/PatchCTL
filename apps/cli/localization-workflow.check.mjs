@@ -95,11 +95,15 @@ test("agent discovers, validates, and submits an immutable localization Patch wi
       }
       throw new Error("Unexpected HTTP request");
     };
-    const invoke = async (args) => {
+    const invoke = async (args, applyToken) => {
       let output = "",
         errors = "";
       const code = await runLocalizationCommand(["localization", ...args], {
-        env: { PATCHCTL_HOME: home, PATCHCTL_TOKEN: "test-token" },
+        env: {
+          PATCHCTL_HOME: home,
+          PATCHCTL_TOKEN: "test-token",
+          ...(applyToken ? { PATCHCTL_APPLY_TOKEN: applyToken } : {}),
+        },
         fetchImpl,
         stdout: {
           write: (value) => {
@@ -166,6 +170,11 @@ test("agent discovers, validates, and submits an immutable localization Patch wi
     const submitted = await invoke(["submit"]);
     assert.equal(submitted.code, 0);
     assert.equal(submitted.data.status, "SUBMITTED");
+    assert.equal((await invoke(["apply"])).error.code, "CREDENTIAL_NOT_FOUND");
+    assert.equal(
+      (await invoke(["apply"], "agent-token")).error.code,
+      "FORBIDDEN",
+    );
     assert.equal(await git("status", "--porcelain"), statusBefore);
     assert.equal(
       requests.filter((item) => item.url.endsWith("/local-patches")).length,
