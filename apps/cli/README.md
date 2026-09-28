@@ -45,6 +45,39 @@ credential failures use safe error messages and never include a password or comp
 boundary means PatchCTL does not expose or upload the credential; it cannot prevent an unrelated,
 fully privileged process running as the same OS user from accessing machine-level secrets.
 
+## Repository localization source (post-v0.1 foundation)
+
+The local runtime can discover flat JSON locale files from a configured Git checkout without
+changing the checkout. A configuration in `~/.patchctl/config.json` can include:
+
+```json
+{
+  "tenants": {},
+  "repositoryLocalization": {
+    "demo": [
+      {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "name": "App translations",
+        "type": "repository-localization",
+        "repositoryUrl": "https://github.com/example/app.git",
+        "checkoutPath": "/absolute/path/to/app",
+        "baseBranch": "main",
+        "baseLocale": "en",
+        "locales": ["en", "de"],
+        "paths": { "en": "locales/en.json", "de": "locales/de.json" }
+      }
+    ]
+  }
+}
+```
+
+`patchctl sources` lists the configured source. The discovery adapter reads only regular JSON
+blobs at the local clone's configured base-branch commit and returns sorted string entries with
+the commit and blob SHAs. It checks that the clone's `origin` exactly matches `repositoryUrl`.
+Initial support is flat JSON objects with string values; nested JSON, YAML, symlinks, and paths
+outside the configured locale files are rejected. Discovery does not fetch remote changes.
+Agent-facing localization discovery and proposal commands are tracked separately in #33.
+
 ## Hosted compatibility commands
 
 The portable `@corely/api-client/patchctl` remains credential-free and Postgres-free. The older

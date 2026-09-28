@@ -187,11 +187,19 @@ export async function runLocal(
     const directory = configDirectory(env);
     const config = await readConfig(directory);
     if (command === "sources") {
-      const sources = Object.entries(config.tenants).map(
+      const postgresSources = Object.entries(config.tenants).map(
         ([tenantId, local]) => {
           const source = sourceMetadata(tenantId, local);
           return { id: source.id, name: source.name, type: source.type };
         },
+      );
+      const repositorySources = Object.values(
+        config.repositoryLocalization ?? {},
+      ).flatMap((items) =>
+        items.map(({ id, name, type }) => ({ id, name, type })),
+      );
+      const sources = [...postgresSources, ...repositorySources].sort(
+        (left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
       );
       stdout.write(JSON.stringify({ sources }) + "\n");
       return 0;
