@@ -192,6 +192,8 @@ export const RepositoryLocalizationOperationSchema = z
     targetAfter: z.string().min(1).max(100_000),
     targetPath: repositoryPath,
     targetBlobSha: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),
+    translationStatus: z.enum(["translated", "missing", "stale", "unverified"]),
+    recordedSourceRevision: hash.nullable(),
   })
   .strict();
 export const RepositoryLocalizationProposalSchema = z
@@ -222,7 +224,7 @@ export const RepositoryLocalizationProposalSchema = z
         code: "custom",
         message: "Duplicate localization operations.",
       });
-    for (const operation of proposal.operations)
+    for (const operation of proposal.operations) {
       if (
         operation.sourceLocale !== proposal.baseLocale ||
         operation.targetLocale === proposal.baseLocale ||
@@ -232,6 +234,20 @@ export const RepositoryLocalizationProposalSchema = z
           code: "custom",
           message: "Invalid localization operation.",
         });
+      const expectedStatus =
+        operation.targetBefore === null || operation.targetBefore.trim() === ""
+          ? "missing"
+          : operation.recordedSourceRevision === null
+            ? "unverified"
+            : operation.recordedSourceRevision === operation.sourceRevision
+              ? "translated"
+              : "stale";
+      if (operation.translationStatus !== expectedStatus)
+        context.addIssue({
+          code: "custom",
+          message: "Localization status does not match recorded revisions.",
+        });
+    }
   });
 export const LocalPatchProposalSchema = z.union([
   LocalProposalSchema,

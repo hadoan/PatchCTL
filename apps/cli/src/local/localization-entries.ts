@@ -24,6 +24,7 @@ export type LocalizationEntry = {
   targetPath: string;
   targetBlobSha: string;
   status: "translated" | "missing" | "stale" | "unverified";
+  recordedSourceRevision: string | null;
 };
 
 export { localizationSourceRevision } from "@patchctl/localization";
@@ -115,6 +116,7 @@ export function modelLocalizationEntries(
         targetPath: target.path,
         targetBlobSha: target.blobSha,
         status,
+        recordedSourceRevision: baseline ?? null,
       });
     }
   }

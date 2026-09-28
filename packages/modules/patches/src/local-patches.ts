@@ -266,18 +266,32 @@ export async function decideLocalPatch(
   authorize(actor, "review"); // Agent credentials never gain review permission.
   const decision = LocalDecisionSchema.parse(input);
   const patch = await getLocalPatch(actor, repo, id);
-  if ("kind" in patch.proposal)
-    throw new PatchError(
-      409,
-      "REVIEW_UNAVAILABLE",
-      "Localization review is not available yet; no decision was recorded.",
-    );
   if (patch.status !== "SUBMITTED" || patch.revision !== decision.revision)
     throw new PatchError(
       409,
       "STALE_REVISION",
       "Review the current immutable revision before deciding.",
     );
+  if ("kind" in patch.proposal && decision.decision === "APPROVED") {
+    for (const operation of patch.proposal.operations) {
+      const validation = validateLocalizationProposal(
+        {
+          key: operation.key!,
+          sourceLocale: operation.sourceLocale!,
+          sourceText: operation.sourceText!,
+          sourceRevision: operation.sourceRevision!,
+          targetLocale: operation.targetLocale!,
+        },
+        operation.targetAfter!,
+      );
+      if (!validation.valid)
+        throw new PatchError(
+          409,
+          "INVALID_LOCALIZATION",
+          "A proposed translation failed structural validation. Prepare a new Patch.",
+        );
+    }
+  }
   const next: LocalPatch = {
     ...patch,
     status: decision.decision,

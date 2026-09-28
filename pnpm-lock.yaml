@@ -210,6 +210,9 @@ importers:
       '@corely/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@patchctl/localization':
+        specifier: workspace:*
+        version: link:../../packages/localization
       '@prisma/adapter-pg':
         specifier: 'catalog:'
         version: 7.4.1
@@ -484,6 +487,9 @@ importers:
       '@formatjs/icu-messageformat-parser':
         specifier: ^3.5.20
         version: 3.5.20
+      fast-sha256:
+        specifier: ^1.3.0
+        version: 1.3.0
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

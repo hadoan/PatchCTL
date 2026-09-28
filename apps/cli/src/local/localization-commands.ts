@@ -447,6 +447,8 @@ export async function runLocalizationCommand(
             targetAfter: options["--value"],
             targetPath: entry.targetPath,
             targetBlobSha: entry.targetBlobSha,
+            translationStatus: entry.status,
+            recordedSourceRevision: entry.recordedSourceRevision,
           };
           if (existing)
             draft.operations[draft.operations.indexOf(existing)] = operation;

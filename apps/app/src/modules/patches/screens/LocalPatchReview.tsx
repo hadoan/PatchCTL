@@ -5,6 +5,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/components/auth/auth-context";
 import { patchClient } from "../patches-api";
 import { LocalClientConnectionGuide } from "../components/LocalClientConnectionGuide";
+import {
+  LocalizationPatchReview,
+  localizationReviewRows,
+} from "../components/LocalizationPatchReview";
 
 function Value({ value }: { value: unknown }) {
   return (
@@ -45,6 +49,12 @@ export function LocalPatchReview({ id }: { id?: string }) {
   const activeMembership = auth.user?.memberships.find(
     (membership) => membership.tenantId === auth.user?.activeTenantId,
   );
+  const localizationRows =
+    detail.data && "kind" in detail.data.proposal
+      ? localizationReviewRows(detail.data.proposal)
+      : null;
+  const hasLocalizationErrors =
+    localizationRows?.some((row) => !row.validation.valid) ?? false;
   async function decide(decision: "APPROVED" | "REJECTED") {
     if (!detail.data) return;
     setBusy(true);
@@ -119,7 +129,8 @@ export function LocalPatchReview({ id }: { id?: string }) {
                   {patch.proposal.title}
                 </Link>
                 <p className="mt-2">
-                  {patch.status} · {patch.proposal.operations.length} records ·{" "}
+                  {patch.status} · {patch.proposal.operations.length}{" "}
+                  {"kind" in patch.proposal ? "entries" : "records"} ·{" "}
                   {patch.creator.kind} {patch.creator.id}
                 </p>
               </li>
@@ -157,18 +168,20 @@ export function LocalPatchReview({ id }: { id?: string }) {
               <strong data-testid="patch-state">{detail.data.status}</strong>
             </p>
             <p data-testid="affected-count">
-              {detail.data.proposal.operations.length} records · Created by{" "}
-              {detail.data.creator.kind} {detail.data.creator.id}
+              {detail.data.proposal.operations.length}{" "}
+              {"kind" in detail.data.proposal ? "entries" : "records"} · Created
+              by {detail.data.creator.kind} {detail.data.creator.id}
             </p>
             <p className="break-all text-xs text-muted-foreground">
               Revision {detail.data.revision}
             </p>
-            {detail.data.status === "APPROVED" && (
-              <p>
-                Approved. Local apply is not implemented yet, so PostgreSQL
-                remains unchanged.
-              </p>
-            )}
+            {detail.data.status === "APPROVED" &&
+              !("kind" in detail.data.proposal) && (
+                <p>
+                  Approved. Local apply is not implemented yet, so PostgreSQL
+                  remains unchanged.
+                </p>
+              )}
             {detail.data.failureCode && (
               <p role="alert">
                 Local execution reported {detail.data.failureCode}. Prepare a
@@ -177,11 +190,7 @@ export function LocalPatchReview({ id }: { id?: string }) {
             )}
           </div>
           {"kind" in detail.data.proposal ? (
-            <p role="status" className="rounded-xl border p-5">
-              Localization proposals can be submitted, but the translation
-              review view is not available yet. Approval is disabled until
-              reviewers can inspect source and proposed target text together.
-            </p>
+            <LocalizationPatchReview proposal={detail.data.proposal} />
           ) : (
             detail.data.proposal.operations.map((op) => (
               <article
@@ -213,7 +222,6 @@ export function LocalPatchReview({ id }: { id?: string }) {
             ))
           )}
           {detail.data.status === "SUBMITTED" &&
-            !("kind" in detail.data.proposal) &&
             (actor.data?.kind === "human" &&
             actor.data.permissions.includes("review") ? (
               <div className="flex gap-3">
@@ -225,12 +233,18 @@ export function LocalPatchReview({ id }: { id?: string }) {
                   Reject
                 </button>
                 <button
-                  disabled={busy}
+                  disabled={busy || hasLocalizationErrors}
                   className="rounded bg-primary text-primary-foreground px-5 py-2 disabled:opacity-40"
                   onClick={() => void decide("APPROVED")}
                 >
                   Approve
                 </button>
+                {hasLocalizationErrors && (
+                  <p role="alert">
+                    Approval is unavailable while translations have validation
+                    errors.
+                  </p>
+                )}
               </div>
             ) : (
               <p>Human reviewer access is required to approve or reject.</p>
@@ -246,8 +260,9 @@ export function LocalPatchReview({ id }: { id?: string }) {
               ))}
             </ol>
             <p className="mt-3 text-sm text-muted-foreground">
-              Execution outcomes are reported by the authenticated local client.
-              The server never connects to the content database.
+              {"kind" in detail.data.proposal
+                ? "Git application and conflict results are reported by the authenticated local client."
+                : "Execution outcomes are reported by the authenticated local client. The server never connects to the content database."}
             </p>
           </section>
         </>

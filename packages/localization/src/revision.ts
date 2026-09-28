@@ -1,11 +1,14 @@
-import { createHash } from "node:crypto";
+import { hash } from "fast-sha256";
 
 export function localizationSourceRevision(
   sourceLocale: string,
   key: string,
   sourceText: string,
 ): string {
-  return createHash("sha256")
-    .update(JSON.stringify([sourceLocale, key, sourceText]))
-    .digest("hex");
+  return Array.from(
+    hash(
+      new TextEncoder().encode(JSON.stringify([sourceLocale, key, sourceText])),
+    ),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
 }

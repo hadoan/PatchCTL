@@ -1,9 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   localizationSourceRevision,
   modelLocalizationEntries,
 } from "./dist/local/localization-entries.js";
+
+test("portable source revision matches SHA-256 of the canonical tuple", () => {
+  const tuple = ["en", "checkout.pay", "Pay now"];
+  assert.equal(
+    localizationSourceRevision(...tuple),
+    createHash("sha256").update(JSON.stringify(tuple)).digest("hex"),
+  );
+});
 
 const snapshot = {
   sourceId: "source-id",

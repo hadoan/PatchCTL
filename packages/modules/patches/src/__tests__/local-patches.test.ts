@@ -457,6 +457,8 @@ describe("repository localization proposals", () => {
           targetAfter: "Abbrechen",
           targetPath: "locales/de.json",
           targetBlobSha: "b".repeat(40),
+          translationStatus: "missing",
+          recordedSourceRevision: null,
         },
       ],
     };
@@ -490,11 +492,32 @@ describe("repository localization proposals", () => {
     ).rejects.toMatchObject({ code: "LOCALE_NOT_CONFIGURED" });
     await expect(
       decideLocalPatch(
+        { revision: "f".repeat(64), decision: "APPROVED" },
+        human,
+        repository,
+        patchId,
+      ),
+    ).rejects.toMatchObject({ code: "STALE_REVISION" });
+    const invalidStored = structuredClone(submitted);
+    if ("kind" in invalidStored.proposal)
+      invalidStored.proposal.operations[0].sourceRevision = "f".repeat(64);
+    repository.patches.set(patchId, invalidStored);
+    await expect(
+      decideLocalPatch(
         { revision: submitted.revision, decision: "APPROVED" },
         human,
         repository,
         patchId,
       ),
-    ).rejects.toMatchObject({ code: "REVIEW_UNAVAILABLE" });
+    ).rejects.toMatchObject({ code: "INVALID_LOCALIZATION" });
+    repository.patches.set(patchId, submitted);
+    const approved = await decideLocalPatch(
+      { revision: submitted.revision, decision: "APPROVED" },
+      human,
+      repository,
+      patchId,
+    );
+    expect(approved.status).toBe("APPROVED");
+    expect(approved.reviewerId).toBe(human.id);
   });
 });

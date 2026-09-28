@@ -13,6 +13,7 @@
     "@corely/modules-patches": "workspace:*",
     "@corely/storage": "workspace:*",
     "@corely/ui": "workspace:*",
+    "@patchctl/localization": "workspace:*",
     "@prisma/adapter-pg": "catalog:",
     "@prisma/client": "catalog:",
     "@tanstack/react-query": "catalog:",
