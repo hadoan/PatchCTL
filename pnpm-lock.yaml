@@ -283,12 +283,12 @@ importers:
       '@corely/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@formatjs/icu-messageformat-parser':
-        specifier: ^3.5.20
-        version: 3.5.20
       '@napi-rs/keyring':
         specifier: ^2.0.0
         version: 2.0.0
+      '@patchctl/localization':
+        specifier: workspace:*
+        version: link:../../packages/localization
       '@patchctl/postgres':
         specifier: workspace:*
         version: link:../../packages/postgres
@@ -479,11 +479,27 @@ importers:
         specifier: workspace:*
         version: link:../tooling/tsconfig
 
+  packages/localization:
+    dependencies:
+      '@formatjs/icu-messageformat-parser':
+        specifier: ^3.5.20
+        version: 3.5.20
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.11
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
   packages/modules/patches:
     dependencies:
       '@corely/contracts':
         specifier: workspace:*
         version: link:../../contracts
+      '@patchctl/localization':
+        specifier: workspace:*
+        version: link:../../localization
       '@prisma/client':
         specifier: 'catalog:'
         version: 7.4.1(prisma@7.4.1(@types/react@18.3.28)(magicast@0.3.5)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3))(typescript@5.9.3)

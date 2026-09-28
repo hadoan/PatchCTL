@@ -40,6 +40,26 @@ export const RepositoryLocalizationSourceSchema = z
     baseLocale: locale,
     locales: z.array(locale).min(2).max(20),
     paths: z.record(locale, localePath),
+    baselines: z
+      .array(
+        z
+          .object({
+            key: z.string().min(1).max(512),
+            targetLocale: locale,
+            sourceRevision: z.string().regex(/^[a-f0-9]{64}$/),
+          })
+          .strict(),
+      )
+      .max(10_000)
+      .optional(),
+    server: z
+      .object({
+        url: z.string().url(),
+        tenantId: z.string().min(1),
+        connectionId: z.string().uuid(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((source, context) => {
@@ -73,6 +93,25 @@ export const RepositoryLocalizationSourceSchema = z
         path: ["paths"],
         message: "Locale paths must be unique.",
       });
+    if (source.baselines) {
+      const identities = source.baselines.map((item) =>
+        JSON.stringify([item.targetLocale, item.key]),
+      );
+      if (
+        new Set(identities).size !== identities.length ||
+        source.baselines.some(
+          (item) =>
+            item.targetLocale === source.baseLocale ||
+            !source.locales.includes(item.targetLocale),
+        )
+      )
+        context.addIssue({
+          code: "custom",
+          path: ["baselines"],
+          message:
+            "Translation source baselines must be unique configured target entries.",
+        });
+    }
   });
 
 export type RepositoryLocalizationSource = z.infer<

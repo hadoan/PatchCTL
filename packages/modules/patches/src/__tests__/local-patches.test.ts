@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { localizationSourceRevision } from "@patchctl/localization";
 import { describe, expect, it, vi } from "vitest";
 import {
   canonicalLocal,
@@ -10,6 +11,7 @@ import {
 import {
   PatchError,
   configureLocalSourceSchema,
+  createLocalClientToken,
   decideLocalPatch,
   emptyLocalSourceDocument,
   getEffectiveLocalSourceSchema,
@@ -20,6 +22,8 @@ import {
   type LocalPatchRepository,
   type LocalSource,
   type LocalSourceRepository,
+  type RepositoryLocalizationSource,
+  type RepositoryLocalizationSourceRepository,
 } from "../index";
 
 const sourceId = "11111111-1111-4111-8111-111111111111";
@@ -93,8 +97,17 @@ const human: Actor = {
   connectionIds: null,
 };
 
-class MemoryRepository implements LocalPatchRepository, LocalSourceRepository {
+class MemoryRepository
+  implements
+    LocalPatchRepository,
+    LocalSourceRepository,
+    RepositoryLocalizationSourceRepository
+{
   readonly patches = new Map<string, LocalPatch>();
+  readonly localizationSources = new Map<
+    string,
+    RepositoryLocalizationSource
+  >();
   readonly sources = new Map<string, LocalSource>([
     [
       sourceId,
@@ -127,6 +140,8 @@ class MemoryRepository implements LocalPatchRepository, LocalSourceRepository {
   }
   async startExecution(before: LocalPatch, after: LocalPatch) {
     this.start(before, after);
+    if ("kind" in before.proposal)
+      throw new Error("Unexpected localization patch.");
     const source = this.sources.get(before.proposal.connectionId);
     if (
       source?.document.schema?.version !== before.proposal.schemaVersion ||
@@ -141,6 +156,21 @@ class MemoryRepository implements LocalPatchRepository, LocalSourceRepository {
     return this.replace(before, after);
   }
   async provisionLocalSourceToken() {}
+  async provisionRepositoryLocalizationToken(
+    input: Parameters<
+      RepositoryLocalizationSourceRepository["provisionRepositoryLocalizationToken"]
+    >[0],
+  ) {
+    this.localizationSources.set(input.sourceId, {
+      id: input.sourceId,
+      tenantId: input.tenantId,
+      configuration: input.configuration,
+    });
+  }
+  async findRepositoryLocalizationSource(tenantId: string, id: string) {
+    const source = this.localizationSources.get(id);
+    return source?.tenantId === tenantId ? structuredClone(source) : null;
+  }
   async findLocalSource(tenantId: string, id: string) {
     const source = this.sources.get(id);
     return source?.tenantId === tenantId ? structuredClone(source) : null;
@@ -344,6 +374,8 @@ describe("local patch source policy", () => {
       secondRepository,
       secondSubmitted.id,
     );
+    if ("kind" in secondApproved.proposal)
+      throw new Error("Unexpected localization patch.");
     await configureLocalSourceSchema(
       {
         expectedVersion: secondApproved.proposal.configurationVersion,
@@ -373,5 +405,96 @@ describe("local patch source policy", () => {
       status: 409,
       code: "STALE_SOURCE_CONFIGURATION",
     });
+  });
+});
+
+describe("repository localization proposals", () => {
+  it("binds proposals to a human-configured source and the normal exact-revision decision", async () => {
+    const repository = new MemoryRepository();
+    const configuration = {
+      type: "repository-localization" as const,
+      name: "App translations",
+      repositoryUrl: "https://github.com/example/app.git",
+      baseBranch: "main",
+      baseLocale: "en",
+      locales: ["en", "de"],
+      paths: { en: "locales/en.json", de: "locales/de.json" },
+    };
+    const token = await createLocalClientToken(
+      human,
+      repository,
+      configuration,
+    );
+    expect(token.connectionId).toBeTruthy();
+    const scopedAgent: Actor = {
+      ...agent,
+      connectionIds: [token.connectionId],
+    };
+    const proposal = {
+      kind: "repository-localization" as const,
+      id: patchId,
+      connectionId: token.connectionId,
+      repositoryUrl: configuration.repositoryUrl,
+      baseBranch: configuration.baseBranch,
+      baseLocale: configuration.baseLocale,
+      baseCommitSha: "a".repeat(40),
+      title: "German checkout copy",
+      createdAt: new Date().toISOString(),
+      operations: [
+        {
+          id: operationId,
+          key: "checkout.cancel",
+          sourceLocale: "en",
+          sourceText: "Cancel",
+          sourceRevision: localizationSourceRevision(
+            "en",
+            "checkout.cancel",
+            "Cancel",
+          ),
+          sourcePath: "locales/en.json",
+          targetLocale: "de",
+          targetBefore: null,
+          targetAfter: "Abbrechen",
+          targetPath: "locales/de.json",
+          targetBlobSha: "b".repeat(40),
+        },
+      ],
+    };
+    const submitted = await submitLocalPatch(
+      proposal,
+      scopedAgent,
+      repository,
+      repository,
+    );
+    expect(submitted.status).toBe("SUBMITTED");
+    await expect(
+      decideLocalPatch(
+        { revision: submitted.revision, decision: "APPROVED" },
+        scopedAgent,
+        repository,
+        patchId,
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(
+      submitLocalPatch(
+        {
+          ...proposal,
+          operations: [
+            { ...proposal.operations[0], targetPath: "locales/other.json" },
+          ],
+        },
+        scopedAgent,
+        repository,
+        repository,
+      ),
+    ).rejects.toMatchObject({ code: "LOCALE_NOT_CONFIGURED" });
+    await expect(
+      decideLocalPatch(
+        { revision: submitted.revision, decision: "APPROVED" },
+        human,
+        repository,
+        patchId,
+      ),
+    ).rejects.toMatchObject({ code: "REVIEW_UNAVAILABLE" });
   });
 });

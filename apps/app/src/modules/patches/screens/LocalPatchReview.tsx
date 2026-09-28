@@ -176,35 +176,44 @@ export function LocalPatchReview({ id }: { id?: string }) {
               </p>
             )}
           </div>
-          {detail.data.proposal.operations.map((op) => (
-            <article
-              key={op.id}
-              data-testid="record-diff"
-              className="rounded-xl border p-5 space-y-4"
-            >
-              <h2 className="font-semibold break-all">
-                {op.resource}/{op.recordId}
-              </h2>
-              {Object.keys(op.after)
-                .filter((key) => op.before[key] !== op.after[key])
-                .map((field) => (
-                  <div key={field}>
-                    <h3 className="font-medium mb-2">{field}</h3>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="min-w-0 rounded border border-red-200 bg-red-50 p-3 text-red-950">
-                        <p className="text-xs font-semibold mb-2">Before</p>
-                        <Value value={op.before[field]} />
-                      </div>
-                      <div className="min-w-0 rounded border border-green-200 bg-green-50 p-3 text-green-950">
-                        <p className="text-xs font-semibold mb-2">After</p>
-                        <Value value={op.after[field]} />
+          {"kind" in detail.data.proposal ? (
+            <p role="status" className="rounded-xl border p-5">
+              Localization proposals can be submitted, but the translation
+              review view is not available yet. Approval is disabled until
+              reviewers can inspect source and proposed target text together.
+            </p>
+          ) : (
+            detail.data.proposal.operations.map((op) => (
+              <article
+                key={op.id}
+                data-testid="record-diff"
+                className="rounded-xl border p-5 space-y-4"
+              >
+                <h2 className="font-semibold break-all">
+                  {op.resource}/{op.recordId}
+                </h2>
+                {Object.keys(op.after)
+                  .filter((key) => op.before[key] !== op.after[key])
+                  .map((field) => (
+                    <div key={field}>
+                      <h3 className="font-medium mb-2">{field}</h3>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="min-w-0 rounded border border-red-200 bg-red-50 p-3 text-red-950">
+                          <p className="text-xs font-semibold mb-2">Before</p>
+                          <Value value={op.before[field]} />
+                        </div>
+                        <div className="min-w-0 rounded border border-green-200 bg-green-50 p-3 text-green-950">
+                          <p className="text-xs font-semibold mb-2">After</p>
+                          <Value value={op.after[field]} />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-            </article>
-          ))}
+                  ))}
+              </article>
+            ))
+          )}
           {detail.data.status === "SUBMITTED" &&
+            !("kind" in detail.data.proposal) &&
             (actor.data?.kind === "human" &&
             actor.data.permissions.includes("review") ? (
               <div className="flex gap-3">

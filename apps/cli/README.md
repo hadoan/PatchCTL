@@ -92,6 +92,29 @@ characters. Validation reports machine-readable codes and source locations where
 does not assess language quality. See [FormatJS ICU syntax](https://formatjs.github.io/docs/core-concepts/icu-syntax/)
 for the supported message grammar.
 
+The agent-facing commands use a separate local localization draft and submit it to the normal
+immutable Patch review service:
+
+```text
+patchctl localization locales
+patchctl localization missing --locale de --json
+patchctl localization stale --locale de --json
+patchctl localization get checkout.cancel --locale de --json
+patchctl localization start --title "German checkout copy"
+patchctl localization set checkout.cancel --locale de --value Abbrechen
+patchctl localization diff
+patchctl localization validate
+patchctl localization submit
+```
+
+`missing` and `stale` return at most 100 entries per call and support `--after`/`--limit`.
+The local profile can be paired with a human-created, one-source token using
+`patchctl localization login --server ORIGIN`. The hosted source configuration must match the
+repository identity, base branch, locale paths, and base locale. A submitted revision cannot be
+edited or approved with agent credentials. Git files stay unchanged through submission and
+approval; approved Git apply is tracked in #35. The human comparison view is tracked in #34, so
+localization approval remains unavailable until that view exists.
+
 ## Hosted compatibility commands
 
 The portable `@corely/api-client/patchctl` remains credential-free and Postgres-free. The older

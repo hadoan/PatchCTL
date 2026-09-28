@@ -130,6 +130,113 @@ export const LocalProposalSchema = z
     )
       ctx.addIssue({ code: "custom", message: "Unrelated resource metadata." });
   });
+const locale = z.string().regex(/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/);
+const repositoryPath = z
+  .string()
+  .max(256)
+  .regex(/^[A-Za-z0-9_-][A-Za-z0-9_./-]*\.json$/)
+  .refine((value) =>
+    value
+      .split("/")
+      .every((part) => part !== "." && part !== ".." && part !== ""),
+  );
+export const RepositoryLocalizationSourceInputSchema = z
+  .object({
+    type: z.literal("repository-localization"),
+    name: z.string().trim().min(1).max(100),
+    repositoryUrl: z
+      .string()
+      .max(500)
+      .refine(
+        (value) =>
+          /^https:\/\/[^\s]+$/.test(value) ||
+          /^ssh:\/\/[^\s]+$/.test(value) ||
+          /^git@[^\s:]+:[^\s]+$/.test(value),
+      ),
+    baseBranch: z
+      .string()
+      .max(100)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/)
+      .refine((value) => !value.includes("..") && !value.includes("//")),
+    baseLocale: locale,
+    locales: z.array(locale).min(2).max(20),
+    paths: z.record(locale, repositoryPath),
+  })
+  .strict()
+  .superRefine((source, context) => {
+    if (
+      new Set(source.locales).size !== source.locales.length ||
+      !source.locales.includes(source.baseLocale) ||
+      Object.keys(source.paths).length !== source.locales.length ||
+      source.locales.some((item) => !source.paths[item]) ||
+      new Set(Object.values(source.paths)).size !== source.locales.length
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Locale mapping must be unique and complete.",
+      });
+  });
+export type RepositoryLocalizationSourceInput = z.infer<
+  typeof RepositoryLocalizationSourceInputSchema
+>;
+export const RepositoryLocalizationOperationSchema = z
+  .object({
+    id: z.string().uuid(),
+    key: z.string().min(1).max(512),
+    sourceLocale: locale,
+    sourceText: z.string().max(100_000),
+    sourceRevision: hash,
+    sourcePath: repositoryPath,
+    targetLocale: locale,
+    targetBefore: z.string().max(100_000).nullable(),
+    targetAfter: z.string().min(1).max(100_000),
+    targetPath: repositoryPath,
+    targetBlobSha: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),
+  })
+  .strict();
+export const RepositoryLocalizationProposalSchema = z
+  .object({
+    kind: z.literal("repository-localization"),
+    id: z.string().uuid(),
+    connectionId: z.string().uuid(),
+    repositoryUrl: z.string().min(1).max(500),
+    baseBranch: z.string().min(1).max(100),
+    baseLocale: locale,
+    baseCommitSha: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),
+    title: z.string().min(1).max(200),
+    createdAt: z.string().datetime(),
+    operations: z.array(RepositoryLocalizationOperationSchema).min(1).max(100),
+  })
+  .strict()
+  .superRefine((proposal, context) => {
+    if (
+      new Set(
+        proposal.operations.map((op) =>
+          JSON.stringify([op.targetLocale, op.key]),
+        ),
+      ).size !== proposal.operations.length ||
+      new Set(proposal.operations.map((op) => op.id)).size !==
+        proposal.operations.length
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Duplicate localization operations.",
+      });
+    for (const operation of proposal.operations)
+      if (
+        operation.sourceLocale !== proposal.baseLocale ||
+        operation.targetLocale === proposal.baseLocale ||
+        operation.targetBefore === operation.targetAfter
+      )
+        context.addIssue({
+          code: "custom",
+          message: "Invalid localization operation.",
+        });
+  });
+export const LocalPatchProposalSchema = z.union([
+  LocalProposalSchema,
+  RepositoryLocalizationProposalSchema,
+]);
 export const LocalStatusSchema = z.enum([
   "SUBMITTED",
   "APPROVED",
@@ -147,7 +254,7 @@ export const LocalPatchSchema = z
     tenantId: z.string(),
     revision: hash,
     status: LocalStatusSchema,
-    proposal: LocalProposalSchema,
+    proposal: LocalPatchProposalSchema,
     creator: actor,
     reviewerId: z.string().nullable(),
     reviewedAt: z.string().nullable(),
@@ -180,6 +287,10 @@ export const LocalResultSchema = z
   })
   .strict();
 export type LocalProposal = z.infer<typeof LocalProposalSchema>;
+export type LocalPatchProposal = z.infer<typeof LocalPatchProposalSchema>;
+export type RepositoryLocalizationProposal = z.infer<
+  typeof RepositoryLocalizationProposalSchema
+>;
 export type LocalPatch = z.infer<typeof LocalPatchSchema>;
 export type LocalExecutionResult = z.infer<typeof LocalResultSchema>;
 export const LocalPatchListSchema = z

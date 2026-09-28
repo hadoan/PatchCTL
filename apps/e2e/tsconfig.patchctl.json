@@ -9,6 +9,7 @@
     "playwright.patchctl.config.ts",
     "playwright.patchctl-demo.config.ts",
     "playwright.patchctl-local.config.ts",
+    "playwright.patchctl-localization.config.ts",
     "tests/patchctl/**/*.ts"
   ]
 }

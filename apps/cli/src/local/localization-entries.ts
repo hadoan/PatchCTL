@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { localizationSourceRevision } from "@patchctl/localization";
 import { LocalError } from "./errors.js";
 import type {
   DiscoveredLocaleFile,
@@ -26,15 +26,7 @@ export type LocalizationEntry = {
   status: "translated" | "missing" | "stale" | "unverified";
 };
 
-export function localizationSourceRevision(
-  sourceLocale: string,
-  key: string,
-  sourceText: string,
-): string {
-  return createHash("sha256")
-    .update(JSON.stringify([sourceLocale, key, sourceText]))
-    .digest("hex");
-}
+export { localizationSourceRevision } from "@patchctl/localization";
 
 function entriesByKey(file: DiscoveredLocaleFile): Map<string, string> {
   const entries = new Map<string, string>();

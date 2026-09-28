@@ -1,5 +1,10 @@
 import type { PrismaClient, Prisma } from "@prisma/client";
-import { LocalPatchSchema, type LocalPatch } from "@corely/contracts";
+import {
+  LocalPatchSchema,
+  LocalProposalSchema,
+  RepositoryLocalizationSourceInputSchema,
+  type LocalPatch,
+} from "@corely/contracts";
 import type { LocalPatchRepository } from "./local-patches";
 import {
   LocalSourceDocumentSchema,
@@ -9,8 +14,15 @@ import {
   type LocalSourceRepository,
 } from "./local-source";
 import { PatchError } from "./patch.errors";
+import {
+  repositoryLocalizationProviderKey,
+  type RepositoryLocalizationSourceRepository,
+} from "./repository-localization-source";
 export class PrismaLocalPatchRepository
-  implements LocalPatchRepository, LocalSourceRepository
+  implements
+    LocalPatchRepository,
+    LocalSourceRepository,
+    RepositoryLocalizationSourceRepository
 {
   constructor(private readonly db: PrismaClient) {}
   async find(tenantId: string, id: string) {
@@ -65,10 +77,17 @@ export class PrismaLocalPatchRepository
     return result.count === 1;
   }
   async startExecution(before: LocalPatch, after: LocalPatch) {
+    if ("kind" in before.proposal)
+      throw new PatchError(
+        409,
+        "APPLY_NOT_IMPLEMENTED",
+        "Repository localization apply is not available yet.",
+      );
+    const proposal = LocalProposalSchema.parse(before.proposal);
     return this.db.$transaction(async (tx) => {
       const locked = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id FROM "IntegrationConnection"
-        WHERE id=${before.proposal.connectionId}
+        WHERE id=${proposal.connectionId}
           AND "tenantId"=${before.tenantId}
           AND "providerKey"=${localPostgresProviderKey}
           AND status='active'
@@ -77,7 +96,7 @@ export class PrismaLocalPatchRepository
         throw new PatchError(404, "SOURCE_NOT_FOUND", "Source not found.");
       const source = await tx.integrationConnection.findFirst({
         where: {
-          id: before.proposal.connectionId,
+          id: proposal.connectionId,
           tenantId: before.tenantId,
           providerKey: localPostgresProviderKey,
           status: "active",
@@ -89,8 +108,8 @@ export class PrismaLocalPatchRepository
         : null;
       if (
         !document?.schema ||
-        document.schema.version !== before.proposal.schemaVersion ||
-        document.configuration.version !== before.proposal.configurationVersion
+        document.schema.version !== proposal.schemaVersion ||
+        document.configuration.version !== proposal.configurationVersion
       )
         throw new PatchError(
           409,
@@ -150,6 +169,56 @@ export class PrismaLocalPatchRepository
         },
       });
     });
+  }
+  async provisionRepositoryLocalizationToken(input: {
+    tenantId: string;
+    ownerUserId: string;
+    keyHash: string;
+    sourceId: string;
+    configuration: Parameters<
+      RepositoryLocalizationSourceRepository["provisionRepositoryLocalizationToken"]
+    >[0]["configuration"];
+  }) {
+    await this.db.$transaction(async (tx) => {
+      await tx.integrationConnection.create({
+        data: {
+          id: input.sourceId,
+          tenantId: input.tenantId,
+          providerKey: repositoryLocalizationProviderKey,
+          authMethod: "local-client",
+          displayName: input.configuration.name,
+          configJson: input.configuration as Prisma.InputJsonValue,
+        },
+      });
+      await tx.apiKey.create({
+        data: {
+          tenantId: input.tenantId,
+          ownerUserId: input.ownerUserId,
+          keyHash: input.keyHash,
+          name: `Repository localization client ${input.sourceId}`,
+          scopes: ["read", "propose"],
+          connectionIds: [input.sourceId],
+        },
+      });
+    });
+  }
+  async findRepositoryLocalizationSource(tenantId: string, sourceId: string) {
+    const row = await this.db.integrationConnection.findFirst({
+      where: {
+        id: sourceId,
+        tenantId,
+        providerKey: repositoryLocalizationProviderKey,
+        status: "active",
+      },
+    });
+    if (!row) return null;
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      configuration: RepositoryLocalizationSourceInputSchema.parse(
+        row.configJson,
+      ),
+    };
   }
   async findLocalSource(tenantId: string, sourceId: string) {
     const row = await this.db.integrationConnection.findFirst({
