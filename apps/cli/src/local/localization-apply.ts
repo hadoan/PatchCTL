@@ -263,6 +263,44 @@ export async function applyApprovedLocalizationPatch(
     groups.set(op.targetPath, [...(groups.get(op.targetPath) ?? []), op]);
   }
   const branch = `patchctl/l10n/${proposal.id}`;
+  const priorList = await command(
+    "gh",
+    [
+      "pr",
+      "list",
+      "--head",
+      branch,
+      "--state",
+      "all",
+      "--json",
+      "url,headRefOid,headRefName,baseRefName,state",
+      "--limit",
+      "100",
+    ],
+    directory,
+  );
+  let priorPrs: unknown;
+  try {
+    priorPrs = JSON.parse(priorList);
+  } catch {
+    throw new LocalError(
+      "PULL_REQUEST_UNAVAILABLE",
+      "Could not read existing pull requests.",
+    );
+  }
+  if (!Array.isArray(priorPrs) || priorPrs.length > 1)
+    conflict(
+      "Pull request identity is ambiguous; inspect the remote before retrying.",
+    );
+  if (priorPrs.length === 0) {
+    const remoteBase = await command(
+      "git",
+      ["ls-remote", "--heads", "origin", source.baseBranch],
+      directory,
+    );
+    if (remoteBase.split("\t")[0] !== proposal.baseCommitSha)
+      conflict("Remote base branch moved after this Patch was prepared.");
+  }
   const temporary = await mkdtemp(join(tmpdir(), "patchctl-l10n-"));
   try {
     const indexEnv = { GIT_INDEX_FILE: join(temporary, "index") };
