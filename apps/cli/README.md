@@ -78,6 +78,12 @@ Initial support is flat JSON objects with string values; nested JSON, YAML, syml
 outside the configured locale files are rejected. Discovery does not fetch remote changes.
 Agent-facing localization discovery and proposal commands are tracked separately in #33.
 
+The semantic model uses the source locale, key, and exact source text to make a stable SHA-256
+source revision for each translation. A missing or whitespace-only target is `missing`. A target
+with a recorded matching source revision is `translated`; a changed source is `stale`. Existing
+target text with no recorded source revision is `unverified`, since PatchCTL cannot infer when
+it was translated. The later proposal/apply workflow must persist these provenance baselines.
+
 ## Hosted compatibility commands
 
 The portable `@corely/api-client/patchctl` remains credential-free and Postgres-free. The older

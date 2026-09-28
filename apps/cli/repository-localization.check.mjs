@@ -210,6 +210,15 @@ test("repository source rejects unconfigured paths, foreign origins, and unsuppo
       }),
       { code: "UNSUPPORTED_LOCALE_FORMAT" },
     );
+    await writeFile(
+      join(repo, "locales/de.json"),
+      '{"ok":"First","\\u006fk":"Second"}',
+    );
+    await git("add", "locales/de.json");
+    await git("commit", "-m", "Duplicate key");
+    await assert.rejects(discoverRepositoryLocalization(source), {
+      code: "DUPLICATE_LOCALE_KEY",
+    });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
