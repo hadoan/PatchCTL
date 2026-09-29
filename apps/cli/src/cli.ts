@@ -3,6 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { localCommands, runLocal } from "./local/commands.js";
 import { runPatchCommand } from "./local/patch-commands.js";
+import { runLocalizationCommand } from "./local/localization-commands.js";
 import { runServerCommand } from "./local/server-commands.js";
 import {
   PatchProposalInputSchema,
@@ -31,6 +32,15 @@ Local-first commands (PostgreSQL credentials stay on this machine):
   validate
   login --server ORIGIN
   submit
+  localization locales
+  localization missing --locale de --json
+  localization stale --locale de --json
+  localization get KEY --locale de --json
+  localization start --title TITLE
+  localization set KEY --locale de --value TEXT
+  localization diff | validate | submit
+  localization apply  # human token in PATCHCTL_APPLY_TOKEN after approval
+  localization login --server ORIGIN
 
 Hosted compatibility commands (explicit server namespace; server owns its DSN):
   server sources
@@ -143,6 +153,8 @@ export async function run(
   }: RunOptions = {},
 ): Promise<number> {
   try {
+    if (!args.includes("--help") && args[0] === "localization")
+      return runLocalizationCommand(args, { env, stdout, stderr, fetchImpl });
     if (!args.includes("--help") && ["login", "submit"].includes(args[0]))
       return runServerCommand(args, { env, stdout, stderr, fetchImpl });
     if (

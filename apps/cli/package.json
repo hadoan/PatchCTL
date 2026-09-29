@@ -10,13 +10,14 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "pnpm run build && node --test cli.check.mjs local.check.mjs drafts.check.mjs",
-    "build": "pnpm --filter @patchctl/postgres build && tsc -p tsconfig.json",
-    "typecheck": "pnpm --filter @patchctl/postgres build && tsc -p tsconfig.json --noEmit"
+    "test": "pnpm run build && node --test cli.check.mjs local.check.mjs drafts.check.mjs repository-localization.check.mjs localization-entries.check.mjs localization-validation.check.mjs localization-workflow.check.mjs localization-apply.check.mjs localization-json.check.mjs",
+    "build": "pnpm --filter @patchctl/postgres build && pnpm --filter @patchctl/localization build && tsc -p tsconfig.json",
+    "typecheck": "pnpm --filter @patchctl/postgres build && pnpm --filter @patchctl/localization build && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@corely/api-client": "workspace:*",
     "@corely/contracts": "workspace:*",
+    "@patchctl/localization": "workspace:*",
     "@napi-rs/keyring": "^2.0.0",
     "@patchctl/postgres": "workspace:*",
     "pg": "catalog:",

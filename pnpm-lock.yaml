@@ -210,6 +210,9 @@ importers:
       '@corely/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@patchctl/localization':
+        specifier: workspace:*
+        version: link:../../packages/localization
       '@prisma/adapter-pg':
         specifier: 'catalog:'
         version: 7.4.1
@@ -286,6 +289,9 @@ importers:
       '@napi-rs/keyring':
         specifier: ^2.0.0
         version: 2.0.0
+      '@patchctl/localization':
+        specifier: workspace:*
+        version: link:../../packages/localization
       '@patchctl/postgres':
         specifier: workspace:*
         version: link:../../packages/postgres
@@ -476,11 +482,30 @@ importers:
         specifier: workspace:*
         version: link:../tooling/tsconfig
 
+  packages/localization:
+    dependencies:
+      '@formatjs/icu-messageformat-parser':
+        specifier: ^3.5.20
+        version: 3.5.20
+      fast-sha256:
+        specifier: ^1.3.0
+        version: 1.3.0
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.11
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
   packages/modules/patches:
     dependencies:
       '@corely/contracts':
         specifier: workspace:*
         version: link:../../contracts
+      '@patchctl/localization':
+        specifier: workspace:*
+        version: link:../../localization
       '@prisma/client':
         specifier: 'catalog:'
         version: 7.4.1(prisma@7.4.1(@types/react@18.3.28)(magicast@0.3.5)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3))(typescript@5.9.3)
@@ -1768,6 +1793,12 @@ packages:
 
   '@floating-ui/utils@0.2.10':
     resolution: {integrity: sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ==}
+
+  '@formatjs/icu-messageformat-parser@3.5.20':
+    resolution: {integrity: sha512-DUzCb2iskGDKvLU7P+nz/rjpmN59luoTRbWHFFNYNnZTxWCKvwPI94rNll99TGZaI6XoTbDF0QGegk21GFrQZQ==}
+
+  '@formatjs/icu-skeleton-parser@2.1.12':
+    resolution: {integrity: sha512-ca7tZMLpfHX3sUD7hP6gE/qr6Iq89EDd3ZLeRhbsB7r0UD55DGJq+tmFLzrGrnx5StahUevQmQQVtbDRHsfDHA==}
 
   '@google-cloud/common@6.0.0':
     resolution: {integrity: sha512-IXh04DlkLMxWgYLIUYuHHKXKOUwPDzDgke1ykkkJPe48cGIS9kkL2U/o0pm4ankHLlvzLF/ma1eO86n/bkumIA==}
@@ -8924,6 +8955,12 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
 
   '@floating-ui/utils@0.2.10': {}
+
+  '@formatjs/icu-messageformat-parser@3.5.20':
+    dependencies:
+      '@formatjs/icu-skeleton-parser': 2.1.12
+
+  '@formatjs/icu-skeleton-parser@2.1.12': {}
 
   '@google-cloud/common@6.0.0':
     dependencies:

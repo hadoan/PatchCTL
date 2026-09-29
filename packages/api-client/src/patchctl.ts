@@ -19,16 +19,18 @@ import {
   type PatchApplyInput,
   LocalPatchSchema,
   LocalPatchListSchema,
-  LocalProposalSchema,
+  LocalPatchProposalSchema,
   LocalDecisionSchema,
   LocalResultSchema,
   LocalClientTokenSchema,
+  RepositoryLocalizationSourceInputSchema,
   SourceSchemaStateSchema,
   SourceSchemaSyncInputSchema,
   SourceSchemaSyncResultSchema,
   SourceConfigurationInputSchema,
   SourceEffectiveSchemaSchema,
-  type LocalProposal,
+  type LocalPatchProposal,
+  type RepositoryLocalizationSourceInput,
   type LocalExecutionResult,
   type SourceSchemaSyncInput,
   type SourceConfigurationInput,
@@ -207,12 +209,12 @@ export function createPatchctlClient(config: PatchctlClientConfig) {
   }
 
   return {
-    localSubmit: (input: LocalProposal) =>
+    localSubmit: (input: LocalPatchProposal) =>
       call(
         "/local-patches",
         LocalPatchSchema,
         "POST",
-        parseInput(LocalProposalSchema, input),
+        parseInput(LocalPatchProposalSchema, input),
       ),
     localPatch: (id: string) =>
       call(`/local-patches/${segment(id)}`, LocalPatchSchema, "GET"),
@@ -240,8 +242,13 @@ export function createPatchctlClient(config: PatchctlClientConfig) {
         "POST",
         parseInput(LocalResultSchema, result),
       ),
-    createLocalToken: () =>
-      call("/local-client-token", LocalClientTokenSchema, "POST", {}),
+    createLocalToken: (input?: RepositoryLocalizationSourceInput) =>
+      call(
+        "/local-client-token",
+        LocalClientTokenSchema,
+        "POST",
+        input ? parseInput(RepositoryLocalizationSourceInputSchema, input) : {},
+      ),
     actor: (options?: CallOptions) =>
       call("/me", PatchActorSchema, "GET", undefined, options),
     sources: (options?: CallOptions) =>

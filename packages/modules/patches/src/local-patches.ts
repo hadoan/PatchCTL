@@ -1,18 +1,23 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { z } from "zod";
 import {
-  LocalProposalSchema,
+  LocalPatchProposalSchema,
+  RepositoryLocalizationSourceInputSchema,
   LocalDecisionSchema,
   LocalResultSchema,
   canonicalLocal,
   type LocalPatch,
   type LocalProposal,
+  type RepositoryLocalizationProposal,
 } from "@corely/contracts";
+import { validateLocalizationProposal } from "@patchctl/localization";
 import { authorize, type Actor } from "./access";
 import { PatchError } from "./patch.errors";
 import {
   getEffectiveLocalSourceSchema,
   type LocalSourceRepository,
 } from "./local-source";
+import type { RepositoryLocalizationSourceRepository } from "./repository-localization-source";
 
 export interface LocalPatchRepository {
   find(tenantId: string, id: string): Promise<LocalPatch | null>;
@@ -153,16 +158,25 @@ export async function submitLocalPatch(
   input: unknown,
   actor: Actor,
   repo: LocalPatchRepository,
-  sourceRepository: LocalSourceRepository,
+  sourceRepository: LocalSourceRepository &
+    RepositoryLocalizationSourceRepository,
 ) {
-  const proposal = LocalProposalSchema.parse(input);
+  const proposal = LocalPatchProposalSchema.parse(input);
   authorize(actor, "propose", actor.tenantId, proposal.connectionId);
-  const effective = await getEffectiveLocalSourceSchema(
-    actor,
-    sourceRepository,
-    proposal.connectionId,
-  );
-  validateProposalAgainstSource(proposal, effective);
+  if ("kind" in proposal) {
+    await validateRepositoryLocalizationProposal(
+      proposal,
+      actor,
+      sourceRepository,
+    );
+  } else {
+    const effective = await getEffectiveLocalSourceSchema(
+      actor,
+      sourceRepository,
+      proposal.connectionId,
+    );
+    validateProposalAgainstSource(proposal, effective);
+  }
   const revision = digest(proposal);
   const patch: LocalPatch = {
     id: proposal.id,
@@ -187,6 +201,62 @@ export async function submitLocalPatch(
     );
   return stored;
 }
+
+async function validateRepositoryLocalizationProposal(
+  proposal: RepositoryLocalizationProposal,
+  actor: Actor,
+  repository: RepositoryLocalizationSourceRepository,
+): Promise<void> {
+  const source = await repository.findRepositoryLocalizationSource(
+    actor.tenantId,
+    proposal.connectionId,
+  );
+  if (!source)
+    throw new PatchError(
+      404,
+      "SOURCE_NOT_FOUND",
+      "Repository localization source not found.",
+    );
+  const config = source.configuration;
+  if (
+    proposal.repositoryUrl !== config.repositoryUrl ||
+    proposal.baseBranch !== config.baseBranch ||
+    proposal.baseLocale !== config.baseLocale
+  )
+    throw new PatchError(
+      409,
+      "SOURCE_CHANGED",
+      "Proposal does not match the configured repository source.",
+    );
+  for (const operation of proposal.operations) {
+    if (
+      !config.locales.includes(operation.targetLocale) ||
+      operation.sourcePath !== config.paths[config.baseLocale] ||
+      operation.targetPath !== config.paths[operation.targetLocale]
+    )
+      throw new PatchError(
+        400,
+        "LOCALE_NOT_CONFIGURED",
+        "Proposal targets an unconfigured locale path.",
+      );
+    const validation = validateLocalizationProposal(
+      {
+        key: operation.key,
+        sourceLocale: operation.sourceLocale,
+        sourceText: operation.sourceText,
+        sourceRevision: operation.sourceRevision,
+        targetLocale: operation.targetLocale,
+      },
+      operation.targetAfter,
+    );
+    if (!validation.valid)
+      throw new PatchError(
+        400,
+        "INVALID_LOCALIZATION",
+        validation.errors[0].message,
+      );
+  }
+}
 export async function decideLocalPatch(
   input: unknown,
   actor: Actor,
@@ -202,6 +272,26 @@ export async function decideLocalPatch(
       "STALE_REVISION",
       "Review the current immutable revision before deciding.",
     );
+  if ("kind" in patch.proposal && decision.decision === "APPROVED") {
+    for (const operation of patch.proposal.operations) {
+      const validation = validateLocalizationProposal(
+        {
+          key: operation.key!,
+          sourceLocale: operation.sourceLocale!,
+          sourceText: operation.sourceText!,
+          sourceRevision: operation.sourceRevision!,
+          targetLocale: operation.targetLocale!,
+        },
+        operation.targetAfter!,
+      );
+      if (!validation.valid)
+        throw new PatchError(
+          409,
+          "INVALID_LOCALIZATION",
+          "A proposed translation failed structural validation. Prepare a new Patch.",
+        );
+    }
+  }
   const next: LocalPatch = {
     ...patch,
     status: decision.decision,
@@ -231,7 +321,35 @@ export async function reportLocalExecution(
 ) {
   const result = LocalResultSchema.parse(input);
   const patch = await getLocalPatch(actor, repo, id);
-  authorize(actor, "propose", patch.tenantId, patch.proposal.connectionId);
+  authorize(
+    actor,
+    "kind" in patch.proposal ? "apply" : "propose",
+    patch.tenantId,
+    patch.proposal.connectionId,
+  );
+  const localization = "kind" in patch.proposal;
+  const githubRepository =
+    "kind" in patch.proposal
+      ? /^(?:https:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)([^/]+)\/([^/]+?)(?:\.git)?$/.exec(
+          patch.proposal.repositoryUrl,
+        )
+      : null;
+  if (
+    (localization &&
+      result.status === "APPLIED" &&
+      (!result.receipt ||
+        result.receipt.branch !== `patchctl/l10n/${patch.id}` ||
+        (githubRepository &&
+          !result.receipt.prUrl.startsWith(
+            `https://github.com/${githubRepository[1]}/${githubRepository[2]}/pull/`,
+          )))) ||
+    (result.receipt && (!localization || result.status !== "APPLIED"))
+  )
+    throw new PatchError(
+      400,
+      "INVALID_RECEIPT",
+      "A completed localization apply requires its matching Git and PR receipt.",
+    );
   if (
     patch.revision !== result.revision ||
     !patch.reviewerId ||
@@ -245,8 +363,15 @@ export async function reportLocalExecution(
   if (
     patch.status === result.status &&
     patch.failureCode === (result.code ?? null)
-  )
+  ) {
+    if (JSON.stringify(patch.receipt) !== JSON.stringify(result.receipt))
+      throw new PatchError(
+        409,
+        "RECEIPT_MISMATCH",
+        "Execution receipt differs from the recorded result.",
+      );
     return patch;
+  }
   if (patch.status !== "APPROVED")
     throw new PatchError(
       409,
@@ -272,6 +397,7 @@ export async function reportLocalExecution(
     status: result.status === "STARTED" ? "APPROVED" : result.status,
     appliedAt: result.status === "APPLIED" ? new Date().toISOString() : null,
     failureCode: result.code ?? null,
+    ...(result.receipt ? { receipt: result.receipt } : {}),
     events: [
       ...patch.events,
       event(
@@ -296,16 +422,28 @@ export async function reportLocalExecution(
 }
 export async function createLocalClientToken(
   actor: Actor,
-  repo: LocalSourceRepository,
+  repo: LocalSourceRepository & RepositoryLocalizationSourceRepository,
+  input: unknown = {},
 ) {
   authorize(actor, "configure");
+  const localizationInput =
+    input && typeof input === "object" && "type" in input
+      ? RepositoryLocalizationSourceInputSchema.parse(input)
+      : null;
+  if (!localizationInput) z.object({}).strict().parse(input);
   const token = `pct_${randomBytes(32).toString("base64url")}`,
     connectionId = randomUUID();
-  await repo.provisionLocalSourceToken({
+  const provision = {
     tenantId: actor.tenantId,
     ownerUserId: actor.id,
     keyHash: createHash("sha256").update(token).digest("hex"),
     sourceId: connectionId,
-  });
+  };
+  if (localizationInput)
+    await repo.provisionRepositoryLocalizationToken({
+      ...provision,
+      configuration: localizationInput,
+    });
+  else await repo.provisionLocalSourceToken(provision);
   return { token, connectionId, tenantId: actor.tenantId };
 }

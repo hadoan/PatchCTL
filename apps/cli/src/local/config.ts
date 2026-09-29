@@ -4,6 +4,19 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { z } from "zod";
 import { LocalError } from "./errors.js";
+import { RepositoryLocalizationSourceSchema } from "./repository-localization.js";
+
+const repositoryLocalizationSourcesSchema = z
+  .array(RepositoryLocalizationSourceSchema)
+  .max(20)
+  .superRefine((sources, context) => {
+    if (new Set(sources.map((source) => source.id)).size !== sources.length)
+      context.addIssue({
+        code: "custom",
+        message:
+          "Repository localization source IDs must be unique per Tenant.",
+      });
+  });
 
 export const tenantIdSchema = z
   .string()
@@ -64,15 +77,37 @@ export const configSchema = z
   .object({
     currentTenant: tenantIdSchema.optional(),
     tenants: z.record(tenantIdSchema, tenantConfigSchema),
+    repositoryLocalization: z
+      .record(tenantIdSchema, repositoryLocalizationSourcesSchema)
+      .optional(),
   })
   .strict();
 const legacyConfigSchema = z
   .object({
     currentTenant: tenantIdSchema.optional(),
     tenants: z.record(tenantIdSchema, legacyTenantConfigSchema),
+    repositoryLocalization: z
+      .record(tenantIdSchema, repositoryLocalizationSourcesSchema)
+      .optional(),
   })
   .strict();
 export type LocalConfig = z.infer<typeof configSchema>;
+
+export function configuredRepositoryLocalization(
+  config: LocalConfig,
+  tenantId: string,
+  sourceId: string,
+) {
+  const source = config.repositoryLocalization?.[tenantId]?.find(
+    (candidate) => candidate.id === sourceId,
+  );
+  if (!source)
+    throw new LocalError(
+      "SOURCE_NOT_FOUND",
+      "Repository localization source is not configured for this Tenant.",
+    );
+  return source;
+}
 
 export function sourceMetadata(
   _tenantId: string,

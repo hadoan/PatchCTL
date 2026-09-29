@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@corely/contracts": "workspace:*",
+    "@patchctl/localization": "workspace:*",
     "@prisma/client": "catalog:",
     "pg": "catalog:",
     "zod": "catalog:"
