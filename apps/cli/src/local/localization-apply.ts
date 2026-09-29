@@ -9,6 +9,7 @@ import {
 } from "@corely/contracts";
 import { validateLocalizationProposal } from "@patchctl/localization";
 import { LocalError } from "./errors.js";
+import { patchLocalizationJson } from "./localization-json.js";
 import {
   discoverRepositoryLocalization,
   type RepositoryLocalizationSource,
@@ -56,109 +57,6 @@ async function command(
 
 function conflict(message: string): never {
   throw new LocalError("PATCH_CONFLICT", message);
-}
-
-function patchFlatJson(content: string, operations: Operation[]): string {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    return conflict("Configured locale file is no longer valid JSON.");
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
-    return conflict("Configured locale file must be a flat JSON object.");
-  let cursor = 0;
-  const skip = () => {
-    while (/\s/.test(content[cursor] ?? "")) cursor++;
-  };
-  const readString = () => {
-    const start = cursor;
-    if (content[cursor++] !== '"')
-      conflict("Unsupported locale file structure.");
-    while (cursor < content.length) {
-      if (content[cursor] === "\\") cursor += 2;
-      else if (content[cursor++] === '"')
-        return {
-          value: JSON.parse(content.slice(start, cursor)) as string,
-          start,
-          end: cursor,
-        };
-    }
-    return conflict("Unsupported locale file structure.");
-  };
-  skip();
-  if (content[cursor++] !== "{") conflict("Unsupported locale file structure.");
-  const open = cursor;
-  const spans = new Map<
-    string,
-    { start: number; end: number; value: string }
-  >();
-  skip();
-  while (content[cursor] !== "}") {
-    const key = readString();
-    skip();
-    if (content[cursor++] !== ":")
-      conflict("Unsupported locale file structure.");
-    skip();
-    const value = readString();
-    if (spans.has(key.value))
-      conflict("Configured locale file has duplicate keys.");
-    spans.set(key.value, {
-      start: value.start,
-      end: value.end,
-      value: value.value,
-    });
-    skip();
-    if (content[cursor] === ",") {
-      cursor++;
-      skip();
-    } else break;
-  }
-  skip();
-  if (content[cursor] !== "}") conflict("Unsupported locale file structure.");
-  const edits: { start: number; end: number; value: string }[] = [];
-  const additions: Operation[] = [];
-  for (const op of operations) {
-    const current = spans.get(op.key);
-    if ((current?.value ?? null) !== op.targetBefore)
-      conflict("Target translation differs from the reviewed baseline.");
-    if (current)
-      edits.push({
-        start: current.start,
-        end: current.end,
-        value: JSON.stringify(op.targetAfter),
-      });
-    else additions.push(op);
-  }
-  if (additions.length) {
-    if (spans.size + additions.length > 10_000)
-      conflict(
-        "Configured locale file would exceed the supported entry limit.",
-      );
-    const pretty = content.includes("\n");
-    const linebreak = content.includes("\r\n") ? "\r\n" : "\n";
-    const indent = /\n([ \t]*)"/.exec(content)?.[1] ?? "  ";
-    const separator = pretty ? `${linebreak}${indent}` : "";
-    const pairs = additions
-      .sort((a, b) => codeUnitOrder(a.key, b.key))
-      .map(
-        (op) =>
-          `${JSON.stringify(op.key)}:${pretty ? " " : ""}${JSON.stringify(op.targetAfter)}`,
-      )
-      .join(`,${separator}`);
-    const insertion = spans.size
-      ? Math.max(...[...spans.values()].map((span) => span.end))
-      : open;
-    edits.push({
-      start: insertion,
-      end: insertion,
-      value: `${spans.size ? "," : ""}${separator}${pairs}`,
-    });
-  }
-  for (const edit of edits.sort((a, b) => b.start - a.start))
-    content =
-      content.slice(0, edit.start) + edit.value + content.slice(edit.end);
-  return content;
 }
 
 function parsePr(
@@ -304,6 +202,13 @@ export async function applyApprovedLocalizationPatch(
   const temporary = await mkdtemp(join(tmpdir(), "patchctl-l10n-"));
   try {
     const indexEnv = { GIT_INDEX_FILE: join(temporary, "index") };
+    const sourceOriginal = await command(
+      "git",
+      ["show", `${proposal.baseCommitSha}:${source.paths[source.baseLocale]}`],
+      directory,
+      {},
+      true,
+    );
     await command(
       "git",
       ["read-tree", proposal.baseCommitSha],
@@ -321,7 +226,12 @@ export async function applyApprovedLocalizationPatch(
         {},
         true,
       );
-      const updated = patchFlatJson(original, operations);
+      const updated = patchLocalizationJson(
+        original,
+        sourceOriginal,
+        operations,
+        path,
+      );
       if (Buffer.byteLength(updated) > 2_000_000)
         conflict("Configured locale file would exceed the 2 MB limit.");
       const filename = join(temporary, `file-${count++}.json`);

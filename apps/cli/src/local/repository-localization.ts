@@ -4,6 +4,7 @@ import { realpath } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { LocalError } from "./errors.js";
+import { parseLocalizationJson } from "./localization-json.js";
 
 const runFile = promisify(execFile);
 const locale = z.string().regex(/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/);
@@ -162,85 +163,7 @@ function parseEntries(
   content: string,
   path: string,
 ): DiscoveredLocaleFile["entries"] {
-  let value: unknown;
-  try {
-    value = JSON.parse(content);
-  } catch {
-    throw new LocalError(
-      "INVALID_LOCALE_FILE",
-      `Configured locale file ${path} is not valid JSON.`,
-    );
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new LocalError(
-      "UNSUPPORTED_LOCALE_FORMAT",
-      `Configured locale file ${path} must be a flat JSON object of strings.`,
-    );
-  // JSON.parse retains only the last value of a duplicate key. Scan the flat
-  // object as well so discovery never silently changes which text is reviewed.
-  const entries: DiscoveredLocaleFile["entries"] = [];
-  const seen = new Set<string>();
-  let offset = 0;
-  const whitespace = () => {
-    while (/[ \t\r\n]/.test(content[offset] ?? "")) offset++;
-  };
-  const stringToken = (): string => {
-    const start = offset++;
-    for (; offset < content.length; offset++) {
-      if (content[offset] === "\\") offset++;
-      else if (content[offset] === '"')
-        return JSON.parse(content.slice(start, ++offset)) as string;
-    }
-    throw new LocalError(
-      "INVALID_LOCALE_FILE",
-      `Configured locale file ${path} is not valid JSON.`,
-    );
-  };
-  whitespace();
-  offset++; // JSON.parse already established the opening object brace.
-  whitespace();
-  while (content[offset] !== "}") {
-    if (content[offset] !== '"')
-      throw new LocalError(
-        "UNSUPPORTED_LOCALE_FORMAT",
-        `Configured locale file ${path} must be a flat JSON object of strings.`,
-      );
-    const key = stringToken();
-    whitespace();
-    offset++; // colon; guaranteed by JSON.parse
-    whitespace();
-    if (content[offset] !== '"')
-      throw new LocalError(
-        "UNSUPPORTED_LOCALE_FORMAT",
-        `Configured locale file ${path} must be a flat JSON object of strings.`,
-      );
-    const text = stringToken();
-    if (seen.has(key))
-      throw new LocalError(
-        "DUPLICATE_LOCALE_KEY",
-        `Configured locale file ${path} contains a duplicate key.`,
-      );
-    seen.add(key);
-    entries.push({ key, text });
-    whitespace();
-    if (content[offset] === ",") {
-      offset++;
-      whitespace();
-    } else break;
-  }
-  if (
-    entries.length > 10_000 ||
-    entries.some(
-      ({ key, text }) => !key || key.length > 512 || text.length > 100_000,
-    )
-  )
-    throw new LocalError(
-      "UNSUPPORTED_LOCALE_FORMAT",
-      `Configured locale file ${path} must contain at most 10,000 string entries with bounded keys and values.`,
-    );
-  return entries.sort((left, right) =>
-    left.key < right.key ? -1 : left.key > right.key ? 1 : 0,
-  );
+  return parseLocalizationJson(content, path).entries;
 }
 
 /** Read only the configured JSON blobs from a pinned base-branch commit. */

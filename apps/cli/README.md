@@ -47,8 +47,9 @@ fully privileged process running as the same OS user from accessing machine-leve
 
 ## Repository localization source (post-v0.1 foundation)
 
-The local runtime can discover flat JSON locale files from a configured Git checkout without
-changing the checkout. A configuration in `~/.patchctl/config.json` can include:
+The local runtime can discover JSON locale files containing string translations in flat or
+nested objects from a configured Git checkout without changing the checkout. A configuration
+in `~/.patchctl/config.json` can include:
 
 ```json
 {
@@ -74,8 +75,10 @@ changing the checkout. A configuration in `~/.patchctl/config.json` can include:
 `patchctl sources` lists the configured source. The discovery adapter reads only regular JSON
 blobs at the local clone's configured base-branch commit and returns sorted string entries with
 the commit and blob SHAs. It checks that the clone's `origin` exactly matches `repositoryUrl`.
-Initial support is flat JSON objects with string values; nested JSON, YAML, symlinks, and paths
-outside the configured locale files are rejected. Discovery does not fetch remote changes.
+Nested keys are represented with dot-separated paths (for example, `actions.cancel`). Arrays,
+non-string leaves, ambiguous dotted paths, YAML, symlinks, and paths outside the configured
+locale files are rejected. Configure one source per namespace when an app stores locales in
+separate files. Discovery does not fetch remote changes.
 Agent-facing localization discovery and proposal commands are tracked separately in #33.
 
 The semantic model uses the source locale, key, and exact source text to make a stable SHA-256

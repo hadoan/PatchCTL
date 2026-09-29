@@ -156,7 +156,7 @@ test("repository source rejects unconfigured paths, foreign origins, and unsuppo
     );
     await writeFile(
       join(repo, "locales/de.json"),
-      JSON.stringify({ ok: { nested: "Unsupported" } }),
+      JSON.stringify({ ok: ["Unsupported"] }),
     );
     await symlink("en.json", join(repo, "locales/link.json"));
     await git("add", "locales");
@@ -211,8 +211,26 @@ test("repository source rejects unconfigured paths, foreign origins, and unsuppo
       { code: "UNSUPPORTED_LOCALE_FORMAT" },
     );
     await writeFile(
+      join(repo, "locales/en.json"),
+      '{"checkout":{"cancel":"Cancel","pay":"Pay now"}}',
+    );
+    await writeFile(
       join(repo, "locales/de.json"),
-      '{"ok":"First","\\u006fk":"Second"}',
+      '{"checkout":{"pay":"Jetzt bezahlen"}}',
+    );
+    await git("add", "locales/en.json", "locales/de.json");
+    await git("commit", "-m", "Nested locale files");
+    const nested = await discoverRepositoryLocalization(source);
+    assert.deepEqual(
+      nested.files.find((file) => file.locale === "en").entries,
+      [
+        { key: "checkout.cancel", text: "Cancel" },
+        { key: "checkout.pay", text: "Pay now" },
+      ],
+    );
+    await writeFile(
+      join(repo, "locales/de.json"),
+      '{"checkout":{"pay":"First","\\u0070ay":"Second"}}',
     );
     await git("add", "locales/de.json");
     await git("commit", "-m", "Duplicate key");

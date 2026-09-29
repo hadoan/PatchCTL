@@ -30,11 +30,11 @@ test("approved localization creates only the reviewed Git diff and reconciles PR
     await mkdir(join(repo, "locales"));
     await writeFile(
       join(repo, "locales/en.json"),
-      '{\n  "checkout.cancel": "Cancel",\n  "checkout.pay": "Pay now"\n}\n',
+      '{\n  "checkout": {\n    "cancel": "Cancel",\n    "pay": "Pay now"\n  }\n}\n',
     );
     await writeFile(
       join(repo, "locales/de.json"),
-      '{\n  "checkout.pay": "Bezahlen"\n}\n',
+      '{\n  "checkout": {\n    "pay": "Bezahlen"\n  }\n}\n',
     );
     await git("add", "locales");
     await git("commit", "-m", "Base locales");
@@ -158,7 +158,7 @@ process.exit(4);
     );
     assert.equal(
       await git("show", `${receipt.commitSha}:locales/de.json`),
-      '{\n  "checkout.pay": "Jetzt bezahlen",\n  "checkout.cancel": "Abbrechen"\n}',
+      '{\n  "checkout": {\n    "pay": "Jetzt bezahlen",\n    "cancel": "Abbrechen"\n  }\n}',
     );
     assert.equal(await git("status", "--porcelain"), "");
     assert.deepEqual(
@@ -189,7 +189,7 @@ process.exit(4);
     );
     await writeFile(
       join(repo, "locales/en.json"),
-      '{\n  "checkout.cancel": "Permanently cancel",\n  "checkout.pay": "Pay now"\n}\n',
+      '{\n  "checkout": {\n    "cancel": "Permanently cancel",\n    "pay": "Pay now"\n  }\n}\n',
     );
     await git("add", "locales/en.json");
     await git("commit", "-m", "Change source after PR");
